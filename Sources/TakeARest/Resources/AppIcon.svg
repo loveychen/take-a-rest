@@ -1,0 +1,83 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 渐变背景 -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#7B61FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9013FE;stop-opacity:1" />
+    </linearGradient>
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="20" flood-opacity="0.3" />
+    </filter>
+  </defs>
+  
+  <!-- 主圆形背景 -->
+  <circle cx="512" cy="512" r="512" fill="url(#bgGradient)" />
+  
+  <!-- 时钟外圈 -->
+  <circle cx="512" cy="512" r="400" fill="white" opacity="0.95" />
+  <circle cx="512" cy="512" r="380" fill="white" />
+  
+  <!-- 时钟刻度 -->
+  <g stroke="#333" stroke-width="8">
+    <!-- 12点 -->
+    <line x1="512" y1="150" x2="512" y2="190" />
+    <!-- 3点 -->
+    <line x1="830" y1="512" x2="790" y2="512" />
+    <!-- 6点 -->
+    <line x1="512" y1="830" x2="512" y2="790" />
+    <!-- 9点 -->
+    <line x1="190" y1="512" x2="230" y2="512" />
+  </g>
+  
+  <!-- 小时刻度（短刻度） -->
+  <g stroke="#666" stroke-width="4">
+    <line x1="512" y1="200" x2="512" y2="220" />
+    <line x1="570" y1="220" x2="555" y2="240" />
+    <line x1="624" y1="266" x2="610" y2="282" />
+    <line x1="666" y1="320" x2="652" y2="335" />
+    <line x1="695" y1="380" x2="683" y2="395" />
+    <line x1="712" y1="440" x2="700" y2="455" />
+    <line x1="712" y1="500" x2="700" y2="515" />
+    <line x1="695" y1="570" x2="683" y2="585" />
+    <line x1="666" y1="630" x2="652" y2="645" />
+    <line x1="624" y1="685" x2="610" y2="700" />
+    <line x1="570" y1="725" x2="555" y2="740" />
+    <line x1="512" y1="745" x2="512" y2="765" />
+    <line x1="454" y1="725" x2="469" y2="740" />
+    <line x1="402" y1="685" x2="416" y2="700" />
+    <line x1="360" y1="630" x2="374" y2="645" />
+    <line x1="328" y1="570" x2="340" y2="585" />
+    <line x1="310" y1="500" x2="322" y2="515" />
+    <line x1="310" y1="440" x2="322" y2="455" />
+    <line x1="328" y1="380" x2="340" y2="395" />
+    <line x1="360" y1="320" x2="374" y2="335" />
+    <line x1="402" y1="266" x2="416" y2="282" />
+    <line x1="454" y1="220" x2="469" y2="240" />
+  </g>
+  
+  <!-- 时钟指针 -->
+  <!-- 时针 -->
+  <rect x="496" y="320" width="32" height="200" rx="16" fill="#333" transform="rotate(30 512 512)" />
+  <!-- 分针 -->
+  <rect x="500" y="250" width="24" height="280" rx="12" fill="#333" transform="rotate(180 512 512)" />
+  <!-- 秒针 -->
+  <line x1="512" y1="200" x2="512" y2="500" stroke="#FF3B30" stroke-width="8" stroke-linecap="round" />
+  
+  <!-- 指针中心点 -->
+  <circle cx="512" cy="512" r="20" fill="#FF3B30" />
+  <circle cx="512" cy="512" r="8" fill="white" />
+  
+  <!-- 装饰元素 - 休息相关图标 -->
+  <g opacity="0.2" fill="#333">
+    <!-- 左叶子 -->
+    <path d="M300 400 Q260 350 280 300 Q300 250 340 270 Q380 290 360 340 Q340 390 300 400 Z" />
+    <!-- 右叶子 -->
+    <path d="M724 400 Q764 350 744 300 Q724 250 684 270 Q644 290 664 340 Q684 390 724 400 Z" />
+    <!-- 中间花朵 -->
+    <circle cx="512" cy="280" r="40" />
+    <circle cx="470" cy="320" r="30" />
+    <circle cx="512" cy="350" r="30" />
+    <circle cx="554" cy="320" r="30" />
+  </g>
+</svg>

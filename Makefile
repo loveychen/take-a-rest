@@ -67,13 +67,15 @@ bundle:
 	@mkdir -p $(BUILD_DIR)/$(APP_NAME).app/Contents/MacOS
 	@mkdir -p $(BUILD_DIR)/$(APP_NAME).app/Contents/Resources
 	@cp -f $(EXECUTABLE_PATH) $(BUILD_DIR)/$(APP_NAME).app/Contents/MacOS/
+	@# 复制图标文件
+	@cp -f Sources/$(APP_NAME)/Resources/TakeARestIcon.icns $(BUILD_DIR)/$(APP_NAME).app/Contents/Resources/
 	@# 创建Info.plist文件
 	@echo '<?xml version="1.0" encoding="UTF-8"?>' > $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '<plist version="1.0">' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '<dict>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '\t<key>CFBundleIdentifier</key>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
-	@echo '	<string>com.example.TakeARest</string>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
+	@echo '\t<string>com.example.TakeARest</string>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '\t<key>CFBundleName</key>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '\t<string>$(APP_NAME)</string>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '\t<key>CFBundleExecutable</key>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
@@ -88,6 +90,8 @@ bundle:
 	@echo '\t<string>6.0</string>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '\t<key>CFBundlePackageType</key>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '\t<string>APPL</string>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
+	@echo '\t<key>CFBundleIconFile</key>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
+	@echo '\t<string>TakeARestIcon</string>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '</dict>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '</plist>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo "应用程序包已创建: $(BUILD_DIR)/$(APP_NAME).app"
@@ -96,7 +100,14 @@ bundle:
 .PHONY: dmg
 dmg:
 	@make bundle
-	@echo "正在使用create-dmg创建DMG安装包..."
+	@echo "正在创建干净的DMG安装包..."
+	@# 创建临时目录
+	@mkdir -p $(BUILD_DIR)/dmg_temp
+	@# 复制应用程序到临时目录
+	@cp -R $(BUILD_DIR)/$(APP_NAME).app $(BUILD_DIR)/dmg_temp/
+	@# 在临时目录中创建Applications文件夹的软链接
+	@ln -s /Applications $(BUILD_DIR)/dmg_temp/Applications
+	@# 使用create-dmg命令创建DMG
 	@create-dmg \
 		--volname "$(APP_NAME)" \
 		--window-pos 200 120 \
@@ -106,7 +117,9 @@ dmg:
 		--hide-extension "$(APP_NAME).app" \
 		--app-drop-link 600 185 \
 		$(BUILD_DIR)/$(APP_NAME).dmg \
-		$(BUILD_DIR)/
+		$(BUILD_DIR)/dmg_temp/
+	@# 清理临时目录
+	@rm -rf $(BUILD_DIR)/dmg_temp
 	@echo "DMG安装包已创建: $(BUILD_DIR)/$(APP_NAME).dmg"
 
 # 更新依赖
