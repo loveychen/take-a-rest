@@ -222,7 +222,7 @@ final class SettingsManager: @unchecked Sendable {
             return
         }
         
-        try dbQueue.write {
+        try dbQueue.write { 
             db in
             // 查找是否已存在当前设置
             if let existingSetting = try AppSetting.filter(Column("name") == "当前设置").fetchOne(db) {
@@ -246,6 +246,31 @@ final class SettingsManager: @unchecked Sendable {
                 try currentSetting.insert(db)
             }
         }
+    }
+    
+    // 保存上次选择的设置ID
+    func saveLastSelectedSettingId(_ id: Int64?) {
+        UserDefaults.standard.set(id, forKey: "lastSelectedSettingId")
+    }
+    
+    // 获取上次选择的设置ID
+    func getLastSelectedSettingId() -> Int64? {
+        return UserDefaults.standard.object(forKey: "lastSelectedSettingId") as? Int64
+    }
+    
+    // 保存当前的工作时间和休息时间
+    func saveCurrentTimeSettings(workTime: Int, restTime: Int) {
+        UserDefaults.standard.set(workTime, forKey: "currentWorkTime")
+        UserDefaults.standard.set(restTime, forKey: "currentRestTime")
+    }
+    
+    // 获取当前的工作时间和休息时间
+    func getCurrentTimeSettings() -> (workTime: Int, restTime: Int)? {
+        guard let workTime = UserDefaults.standard.object(forKey: "currentWorkTime") as? Int,
+              let restTime = UserDefaults.standard.object(forKey: "currentRestTime") as? Int else {
+            return nil
+        }
+        return (workTime, restTime)
     }
     
     // 重置数据库（删除现有表并重新创建）

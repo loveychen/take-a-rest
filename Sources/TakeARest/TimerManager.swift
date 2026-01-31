@@ -21,6 +21,41 @@ class TimerManager: ObservableObject {
         startTimer()
     }
     
+    @MainActor func loadUserSettings() {
+        // 首先尝试从UserDefaults获取保存的时间设置
+        if let (savedWorkTime, savedRestTime) = SettingsManager.shared.getCurrentTimeSettings() {
+            self.workTime = savedWorkTime
+            self.restTime = savedRestTime
+            self.currentTime = self.workTime
+        } else {
+            // 如果没有保存的时间设置，尝试从数据库获取上次选择的配置
+            do {
+                if let lastSelectedId = SettingsManager.shared.getLastSelectedSettingId() {
+                    let allSettings = try SettingsManager.shared.getAllSettings()
+                    if let setting = allSettings.first(where: { $0.id == lastSelectedId }) {
+                        self.workTime = setting.workTime
+                        self.restTime = setting.restTime
+                        self.currentTime = self.workTime
+                        // 同时保存到UserDefaults
+                        SettingsManager.shared.saveCurrentTimeSettings(workTime: self.workTime, restTime: self.restTime)
+                        return
+                    }
+                }
+                
+                // 如果以上都失败，使用默认设置
+                self.workTime = 45 * 60
+                self.restTime = 5 * 60
+                self.currentTime = self.workTime
+            } catch {
+                print("Failed to load user settings: \(error)")
+                // 发生错误时使用默认设置
+                self.workTime = 45 * 60
+                self.restTime = 5 * 60
+                self.currentTime = self.workTime
+            }
+        }
+    }
+    
     deinit {
         stopTimer()
     }
@@ -63,17 +98,19 @@ class TimerManager: ObservableObject {
         showRestModal = false
     }
     
-    func updateWorkTime(_ minutes: Int) {
-        workTime = minutes * 60
+    // 直接设置工作时间（秒）
+    func setWorkTime(_ seconds: Int) {
+        workTime = seconds
         if isWorking {
-            currentTime = workTime
+            currentTime = seconds
         }
     }
     
-    func updateRestTime(_ minutes: Int) {
-        restTime = minutes * 60
+    // 直接设置休息时间（秒）
+    func setRestTime(_ seconds: Int) {
+        restTime = seconds
         if !isWorking {
-            currentTime = restTime
+            currentTime = seconds
         }
     }
     
@@ -82,6 +119,12 @@ class TimerManager: ObservableObject {
     func formattedTime() -> String {
         let minutes = currentTime / 60
         let seconds = currentTime % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+    
+    func formattedTimeFromSeconds(_ seconds: Int) -> String {
+        let minutes = seconds / 60
+        let seconds = seconds % 60
         return String(format: "%02d:%02d", minutes, seconds)
     }
 }

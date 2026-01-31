@@ -9,7 +9,9 @@ struct SettingsView: View {
     @State private var isEditingWorkTime: Bool = false
     @State private var isEditingRestTime: Bool = false
     @State private var workTimeMinutes: Int = 45
+    @State private var workTimeSeconds: Int = 0
     @State private var restTimeMinutes: Int = 5
+    @State private var restTimeSeconds: Int = 0
     @State private var newSettingName: String = ""
     @State private var showSaveOptions: Bool = false
     @State private var saveOption: SaveOption = .override
@@ -17,14 +19,42 @@ struct SettingsView: View {
     
     @FocusState private var focusedField: FocusField?
     
+    // 创建NumberFormatter属性
+    // 秒数Formatter
+    private let secondsFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimum = 0
+        formatter.maximum = 59
+        return formatter
+    }()
+    
+    private let workTimeFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimum = 0
+        formatter.maximum = 60
+        return formatter
+    }()
+    
+    private let restTimeFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimum = 0
+        formatter.maximum = 10
+        return formatter
+    }()
+    
     enum SaveOption {
         case override
         case new
     }
     
     enum FocusField: Hashable {
-        case workTime
-        case restTime
+        case workTimeMinutes
+        case workTimeSeconds
+        case restTimeMinutes
+        case restTimeSeconds
     }
     
     var body: some View {
@@ -42,14 +72,19 @@ struct SettingsView: View {
                     }
                 }
                 .frame(width: 300)
-                .onChange(of: selectedSettingId) { _ in
-                    if let id = selectedSettingId,
+                .onChange(of: selectedSettingId) { newValue in
+                    if let id = newValue,
                        let setting = allSettings.first(where: { $0.id == id }) {
                         timerManager.workTime = setting.workTime
                         timerManager.restTime = setting.restTime
                         timerManager.currentTime = timerManager.workTime
                         workTimeMinutes = setting.workTime / 60
+                        workTimeSeconds = setting.workTime % 60
                         restTimeMinutes = setting.restTime / 60
+                        restTimeSeconds = setting.restTime % 60
+                        // 保存上次选择的设置ID和当前时间设置
+                        SettingsManager.shared.saveLastSelectedSettingId(id)
+                        SettingsManager.shared.saveCurrentTimeSettings(workTime: setting.workTime, restTime: setting.restTime)
                     }
                 }
             }
@@ -92,23 +127,38 @@ struct SettingsView: View {
                     .font(.subheadline)
                 
                 if isEditingWorkTime {
-                    TextField("", value: $workTimeMinutes, formatter: NumberFormatter())
-                        .frame(width: 60)
-                        .textFieldStyle(.roundedBorder)
-                        .multilineTextAlignment(.center)
-                        .focused($focusedField, equals: .workTime)
-                        .onSubmit {
-                            timerManager.updateWorkTime(workTimeMinutes)
-                            isEditingWorkTime = false
-                            focusedField = nil
-                        }
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                focusedField = .workTime
+                    HStack(spacing: 5) {
+                        TextField("", value: $workTimeMinutes, formatter: workTimeFormatter)
+                            .frame(width: 50)
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.center)
+                            .focused($focusedField, equals: .workTimeMinutes)
+                            .onSubmit {
+                                // 移动焦点到秒数输入框
+                                focusedField = .workTimeSeconds
                             }
+                        
+                        Text(":")
+                            .font(.subheadline)
+                        
+                        TextField("", value: $workTimeSeconds, formatter: secondsFormatter)
+                            .frame(width: 50)
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.center)
+                            .focused($focusedField, equals: .workTimeSeconds)
+                            .onSubmit {
+                                updateWorkTime()
+                                isEditingWorkTime = false
+                                focusedField = nil
+                            }
+                    }
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            focusedField = .workTimeMinutes
                         }
+                    }
                 } else {
-                    Text("\(timerManager.workTime / 60) 分钟")
+                    Text(timerManager.formattedTimeFromSeconds(timerManager.workTime))
                         .font(.subheadline)
                         .frame(width: 100)
                 }
@@ -117,6 +167,7 @@ struct SettingsView: View {
                     isEditingWorkTime.toggle()
                     if isEditingWorkTime {
                         workTimeMinutes = timerManager.workTime / 60
+                        workTimeSeconds = timerManager.workTime % 60
                     }
                 }) {
                     Image(systemName: "pencil")
@@ -125,11 +176,35 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.borderless)
                 
+                // 分钟调整器
                 Stepper(value: Binding(
                     get: { timerManager.workTime / 60 },
-                    set: { timerManager.updateWorkTime($0) }
-                ), in: 1...60, step: 1) {
-                    EmptyView()
+                    set: { newValue in
+                        let seconds = timerManager.workTime % 60
+                        timerManager.workTime = newValue * 60 + seconds
+                        // 更新本地状态变量
+                        workTimeMinutes = newValue
+                        // 保存当前时间设置
+                        SettingsManager.shared.saveCurrentTimeSettings(workTime: timerManager.workTime, restTime: timerManager.restTime)
+                    }
+                ), in: 0...60, step: 1) {
+                    Text("分钟")
+                }
+                .labelsHidden()
+                
+                // 秒数调整器
+                Stepper(value: Binding(
+                    get: { timerManager.workTime % 60 },
+                    set: { newValue in
+                        let minutes = timerManager.workTime / 60
+                        timerManager.workTime = minutes * 60 + newValue
+                        // 更新本地状态变量
+                        workTimeSeconds = newValue
+                        // 保存当前时间设置
+                        SettingsManager.shared.saveCurrentTimeSettings(workTime: timerManager.workTime, restTime: timerManager.restTime)
+                    }
+                ), in: 0...59, step: 1) {
+                    Text("秒")
                 }
                 .labelsHidden()
             }
@@ -139,23 +214,38 @@ struct SettingsView: View {
                     .font(.subheadline)
                 
                 if isEditingRestTime {
-                    TextField("", value: $restTimeMinutes, formatter: NumberFormatter())
-                        .frame(width: 60)
-                        .textFieldStyle(.roundedBorder)
-                        .multilineTextAlignment(.center)
-                        .focused($focusedField, equals: .restTime)
-                        .onSubmit {
-                            timerManager.updateRestTime(restTimeMinutes)
-                            isEditingRestTime = false
-                            focusedField = nil
-                        }
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                focusedField = .restTime
+                    HStack(spacing: 5) {
+                        TextField("", value: $restTimeMinutes, formatter: restTimeFormatter)
+                            .frame(width: 50)
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.center)
+                            .focused($focusedField, equals: .restTimeMinutes)
+                            .onSubmit {
+                                // 移动焦点到秒数输入框
+                                focusedField = .restTimeSeconds
                             }
+                        
+                        Text(":")
+                            .font(.subheadline)
+                        
+                        TextField("", value: $restTimeSeconds, formatter: secondsFormatter)
+                            .frame(width: 50)
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.center)
+                            .focused($focusedField, equals: .restTimeSeconds)
+                            .onSubmit {
+                                updateRestTime()
+                                isEditingRestTime = false
+                                focusedField = nil
+                            }
+                    }
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            focusedField = .restTimeMinutes
                         }
+                    }
                 } else {
-                    Text("\(timerManager.restTime / 60) 分钟")
+                    Text(timerManager.formattedTimeFromSeconds(timerManager.restTime))
                         .font(.subheadline)
                         .frame(width: 100)
                 }
@@ -164,6 +254,7 @@ struct SettingsView: View {
                     isEditingRestTime.toggle()
                     if isEditingRestTime {
                         restTimeMinutes = timerManager.restTime / 60
+                        restTimeSeconds = timerManager.restTime % 60
                     }
                 }) {
                     Image(systemName: "pencil")
@@ -172,11 +263,35 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.borderless)
                 
+                // 分钟调整器
                 Stepper(value: Binding(
                     get: { timerManager.restTime / 60 },
-                    set: { timerManager.updateRestTime($0) }
-                ), in: 1...10, step: 1) {
-                    EmptyView()
+                    set: { newValue in
+                        let seconds = timerManager.restTime % 60
+                        timerManager.restTime = newValue * 60 + seconds
+                        // 更新本地状态变量
+                        restTimeMinutes = newValue
+                        // 保存当前时间设置
+                        SettingsManager.shared.saveCurrentTimeSettings(workTime: timerManager.workTime, restTime: timerManager.restTime)
+                    }
+                ), in: 0...10, step: 1) {
+                    Text("分钟")
+                }
+                .labelsHidden()
+                
+                // 秒数调整器
+                Stepper(value: Binding(
+                    get: { timerManager.restTime % 60 },
+                    set: { newValue in
+                        let minutes = timerManager.restTime / 60
+                        timerManager.restTime = minutes * 60 + newValue
+                        // 更新本地状态变量
+                        restTimeSeconds = newValue
+                        // 保存当前时间设置
+                        SettingsManager.shared.saveCurrentTimeSettings(workTime: timerManager.workTime, restTime: timerManager.restTime)
+                    }
+                ), in: 0...59, step: 1) {
+                    Text("秒")
                 }
                 .labelsHidden()
             }
@@ -259,20 +374,62 @@ struct SettingsView: View {
         do {
             allSettings = try SettingsManager.shared.getAllSettings()
             if selectedSettingId == nil {
-                if let current = try SettingsManager.shared.getCurrentSettings() {
+                // 首先尝试恢复上次选择的设置
+                if let lastId = SettingsManager.shared.getLastSelectedSettingId() {
+                    selectedSettingId = lastId
+                } else if let current = try SettingsManager.shared.getCurrentSettings() {
                     selectedSettingId = current.id
                 }
             }
+            // 如果恢复的ID在当前设置列表中不存在，则使用默认设置
+            if selectedSettingId != nil && !allSettings.contains(where: { $0.id == selectedSettingId }) {
+                if let defaultSetting = allSettings.first(where: { $0.name == "我的默认配置" }) {
+                    selectedSettingId = defaultSetting.id
+                    SettingsManager.shared.saveLastSelectedSettingId(defaultSetting.id)
+                }
+            }
+            
+            // 始终使用当前timerManager的设置
+            workTimeMinutes = timerManager.workTime / 60
+            workTimeSeconds = timerManager.workTime % 60
+            restTimeMinutes = timerManager.restTime / 60
+            restTimeSeconds = timerManager.restTime % 60
         } catch {
             print("Failed to load settings: \(error)")
         }
+    }
+    
+    // 更新工作时间（分钟+秒）
+    private func updateWorkTime() {
+        let totalSeconds = workTimeMinutes * 60 + workTimeSeconds
+        // 确保至少1秒
+        let adjustedSeconds = max(totalSeconds, 1)
+        timerManager.workTime = adjustedSeconds
+        // 同步更新本地状态
+        workTimeMinutes = adjustedSeconds / 60
+        workTimeSeconds = adjustedSeconds % 60
+        // 保存当前时间设置
+        SettingsManager.shared.saveCurrentTimeSettings(workTime: timerManager.workTime, restTime: timerManager.restTime)
+    }
+    
+    // 更新休息时间（分钟+秒）
+    private func updateRestTime() {
+        let totalSeconds = restTimeMinutes * 60 + restTimeSeconds
+        // 确保至少1秒
+        let adjustedSeconds = max(totalSeconds, 1)
+        timerManager.restTime = adjustedSeconds
+        // 同步更新本地状态
+        restTimeMinutes = adjustedSeconds / 60
+        restTimeSeconds = adjustedSeconds % 60
+        // 保存当前时间设置
+        SettingsManager.shared.saveCurrentTimeSettings(workTime: timerManager.workTime, restTime: timerManager.restTime)
     }
     
     private func saveSettings() {
         do {
             if saveOption == .override {
                 if let id = selectedSettingId,
-                   let setting = allSettings.first(where: { $0.id == id }) {
+                    let setting = allSettings.first(where: { $0.id == id }) {
                     try SettingsManager.shared.saveSettings(
                         id: id,
                         name: setting.name,

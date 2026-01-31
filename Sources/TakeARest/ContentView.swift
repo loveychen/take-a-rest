@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
-    @StateObject private var timerManager = TimerManager()
+    @EnvironmentObject private var timerManager: TimerManager
     @State private var selectedTab: Tab = .main
     
     enum Tab: String {
@@ -62,6 +62,10 @@ struct ContentView: View {
                 RestModal()
             }
         }
-        .environmentObject(timerManager)
+        .onAppear {
+            Task { @MainActor in
+                timerManager.loadUserSettings()
+            }
+        }
     }
 }
