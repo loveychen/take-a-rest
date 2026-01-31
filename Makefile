@@ -7,6 +7,11 @@ APP_NAME = TakeARest
 BUILD_DIR = ./.build
 EXECUTABLE_PATH = ./.build/release/$(APP_NAME)
 
+# 代码签名配置
+# 如果有开发者证书，可以设置为你的证书名称
+# CODE_SIGN_IDENTITY = "Developer ID Application: Your Name (XXXXXXXXXX)"
+CODE_SIGN_IDENTITY = ""
+
 # 默认目标
 .PHONY: all
 all: build
@@ -30,8 +35,12 @@ test:
 .PHONY: clean
 clean:
 	swift package clean
-	rm -rf $(BUILD_DIR)
-	rm -rf ./.build
+	@# 只清理我们自己生成的文件，保留SPM管理的checkouts和build目录结构
+	@rm -rf $(BUILD_DIR)/$(APP_NAME).app 2>/dev/null || true
+	@rm -rf $(BUILD_DIR)/$(APP_NAME).dmg 2>/dev/null || true
+	@rm -rf $(BUILD_DIR)/dmg_temp 2>/dev/null || true
+	@rm -rf $(BUILD_DIR)/release 2>/dev/null || true
+	@rm -rf $(BUILD_DIR)/debug 2>/dev/null || true
 
 # 运行应用（Release 模式）
 .PHONY: run
@@ -67,6 +76,8 @@ bundle:
 	@mkdir -p $(BUILD_DIR)/$(APP_NAME).app/Contents/MacOS
 	@mkdir -p $(BUILD_DIR)/$(APP_NAME).app/Contents/Resources
 	@cp -f $(EXECUTABLE_PATH) $(BUILD_DIR)/$(APP_NAME).app/Contents/MacOS/
+	@# 设置可执行文件权限
+	@chmod +x $(BUILD_DIR)/$(APP_NAME).app/Contents/MacOS/$(APP_NAME)
 	@# 复制图标文件
 	@cp -f Sources/$(APP_NAME)/Resources/TakeARestIcon.icns $(BUILD_DIR)/$(APP_NAME).app/Contents/Resources/
 	@# 创建Info.plist文件
@@ -94,6 +105,13 @@ bundle:
 	@echo '\t<string>TakeARestIcon</string>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '</dict>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
 	@echo '</plist>' >> $(BUILD_DIR)/$(APP_NAME).app/Contents/Info.plist
+	@# 代码签名（如果设置了签名身份）
+	@if [ ! -z "$(CODE_SIGN_IDENTITY)" ]; then \
+		echo "正在签名应用程序..."; \
+		codesign --deep --force --verbose --sign "$(CODE_SIGN_IDENTITY)" $(BUILD_DIR)/$(APP_NAME).app; \
+	else \
+		echo "未设置代码签名身份，跳过签名步骤"; \
+	fi
 	@echo "应用程序包已创建: $(BUILD_DIR)/$(APP_NAME).app"
 
 # 创建DMG安装包
@@ -105,9 +123,7 @@ dmg:
 	@mkdir -p $(BUILD_DIR)/dmg_temp
 	@# 复制应用程序到临时目录
 	@cp -R $(BUILD_DIR)/$(APP_NAME).app $(BUILD_DIR)/dmg_temp/
-	@# 在临时目录中创建Applications文件夹的软链接
-	@ln -s /Applications $(BUILD_DIR)/dmg_temp/Applications
-	@# 使用create-dmg命令创建DMG
+	@# 使用create-dmg命令创建DMG (--app-drop-link 参数已经会创建Applications链接)
 	@create-dmg \
 		--volname "$(APP_NAME)" \
 		--window-pos 200 120 \

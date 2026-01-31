@@ -64,17 +64,35 @@ struct RestModal: View {
             // 确保窗口显示出来（无论是否在后台模式下）
             retainedWindow.makeKeyAndOrderFront(nil)
             
-            // 保持窗口最大化，不调整大小
-            retainedWindow.zoom(nil)
+            // 获取当前屏幕的尺寸（包括菜单栏区域）
+            let screen = NSScreen.main
+            if let screenFrame = screen?.frame {
+                // 直接将窗口尺寸设置为屏幕尺寸
+                retainedWindow.setFrame(screenFrame, display: true)
+            }
             
-            retainedWindow.level = .screenSaver
-            retainedWindow.collectionBehavior = [.canJoinAllSpaces]
+            // 设置窗口为最高优先级
+            retainedWindow.level = .screenSaver + 1
+            retainedWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary, .stationary]
             retainedWindow.isMovable = false
-            retainedWindow.isOpaque = false
-            retainedWindow.backgroundColor = NSColor.clear
+            retainedWindow.isOpaque = true
+            retainedWindow.backgroundColor = NSColor.black
             retainedWindow.ignoresMouseEvents = false
+            retainedWindow.styleMask = [.fullSizeContentView]
+            retainedWindow.titleVisibility = .hidden
+            retainedWindow.titlebarAppearsTransparent = true
+            retainedWindow.hasShadow = false
             
-            NSApp.presentationOptions = []
+            // 禁用系统功能，确保休息界面占据全局焦点
+            NSApp.presentationOptions = [
+                .hideDock,
+                .hideMenuBar,
+                .disableProcessSwitching,
+                .disableForceQuit,
+                .disableSessionTermination,
+                .disableHideApplication,
+                .fullScreen
+            ]
             
             // 激活应用以显示休息界面
             NSApp.activate(ignoringOtherApps: true)
