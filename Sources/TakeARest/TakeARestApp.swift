@@ -37,10 +37,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 struct TakeARestApp: App {
     // 创建AppDelegate实例
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    // 创建TimerManager实例
+    let timerManager = TimerManager()
     
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(timerManager)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
