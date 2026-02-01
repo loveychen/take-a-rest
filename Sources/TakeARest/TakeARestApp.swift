@@ -1,12 +1,12 @@
+import CoreData
 import SwiftUI
-import AppKit
 
 // AppDelegate用于处理Dock图标点击事件和应用程序状态
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 确保应用程序在Dock中显示图标
-        NSApp.setActivationPolicy(.regular)
-        
+        // NSApp.setActivationPolicy(.regular) // Commented out for CoreData migration
+
         // 延迟一下，确保窗口已经创建
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             if let window = NSApp.windows.first {
@@ -15,8 +15,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
-    
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool)
+        -> Bool
+    {
         // 检查是否有窗口
         if !sender.windows.isEmpty {
             // 显示所有现有窗口
@@ -39,7 +41,7 @@ struct TakeARestApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     // 创建TimerManager实例
     let timerManager = TimerManager()
-    
+
     var body: some Scene {
         WindowGroup {
             ContentView()

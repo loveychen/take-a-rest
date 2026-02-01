@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:TakeARest}",
+      "name": "Debug TakeARest",
+      "target": "TakeARest",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug TakeARest"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:TakeARest}",
+      "name": "Release TakeARest",
+      "target": "TakeARest",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release TakeARest"
+    }
+  ]
+}
