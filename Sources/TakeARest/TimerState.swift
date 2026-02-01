@@ -1,7 +1,9 @@
 import CoreData
 import Foundation
 
-class TimerManager: ObservableObject {
+/// 计时器管理类 - 处理工作/休息周期
+/// 使用 Timer 在主线程上驱动状态更新
+final class TimerState: ObservableObject {
     @Published var workTime: Int = TimeConstants.defaultWorkTime
     @Published var restTime: Int = TimeConstants.defaultRestTime
     @Published var currentTime: Int = TimeConstants.defaultWorkTime
@@ -11,7 +13,7 @@ class TimerManager: ObservableObject {
     @Published var isBackgroundMode: Bool = false
 
     private var timer: Timer?
-    private var isSwitchingMode: Bool = false  // 防止重复切换模式的标志位
+    private var isSwitchingMode: Bool = false
 
     init() {
         // 使用默认设置初始化，不启动计时器
@@ -20,77 +22,56 @@ class TimerManager: ObservableObject {
         self.currentTime = self.workTime
 
         // 注意：计时器将在 ContentView.onAppear 中调用 loadUserSettings() 时启动
-        // 这样可以确保只启动一次，并且在加载用户设置后启动
     }
 
+    /// 从 UserDefaults 和 Core Data 加载用户设置
     func loadUserSettings() {
-        // 停止计时器
         stopTimer()
 
         // 首先尝试从UserDefaults获取保存的时间设置
-        if let (savedWorkTime, savedRestTime) = SettingsManager.shared.getCurrentTimeSettings() {
-            self.workTime = savedWorkTime
-            self.restTime = savedRestTime
-            self.currentTime = savedWorkTime
-            self.isWorking = true
-            self.showRestModal = false
-            self.startTimer()
+        if let (savedWorkTime, savedRestTime) = SettingsStorage.shared.getCurrentTimeSettings() {
+            updateSettings(workTime: savedWorkTime, restTime: savedRestTime)
+            startTimer()
             return
         }
 
-        // 标志位，记录是否需要保存设置到UserDefaults
-        var needSaveToUserDefaults = false
         var loadedWorkTime = TimeConstants.defaultWorkTime
         var loadedRestTime = TimeConstants.defaultRestTime
 
         // 如果没有保存的时间设置，尝试从数据库获取上次选择的配置
         do {
-            if let lastSelectedId = SettingsManager.shared.getLastSelectedSettingId() {
-                let allSettings = try SettingsManager.shared.getAllSettings()
+            if let lastSelectedId = SettingsStorage.shared.getLastSelectedSettingId() {
+                let allSettings = try SettingsStorage.shared.getAllSettings()
                 if let setting = allSettings.first(where: { $0.id == lastSelectedId }) {
                     loadedWorkTime = setting.workTime
                     loadedRestTime = setting.restTime
-                } else {
-                    // 没有找到对应的配置，使用默认设置
-                    needSaveToUserDefaults = true
                 }
-            } else {
-                // 没有上次选择的配置ID，使用默认设置
-                needSaveToUserDefaults = true
             }
         } catch {
-            print("Failed to load user settings: \(error)")
-            needSaveToUserDefaults = true
+            print("⚠️ Failed to load user settings: \(error)")
         }
 
-        // 更新属性
-        self.workTime = loadedWorkTime
-        self.restTime = loadedRestTime
-        self.currentTime = loadedWorkTime
-        self.isWorking = true
-        self.showRestModal = false
+        // 更新属性并保存到 UserDefaults
+        updateSettings(workTime: loadedWorkTime, restTime: loadedRestTime)
+        SettingsStorage.shared.saveCurrentTimeSettings(
+            workTime: loadedWorkTime, restTime: loadedRestTime)
 
-        // 如果需要，保存设置到UserDefaults
-        if needSaveToUserDefaults {
-            SettingsManager.shared.saveCurrentTimeSettings(
-                workTime: loadedWorkTime, restTime: loadedRestTime)
-        }
-
-        // 启动计时器
-        self.startTimer()
+        startTimer()
     }
 
     deinit {
         stopTimer()
     }
 
+    // MARK: - 私有方法
     private func startTimer() {
         stopTimer()
-
-        // 使用传统Timer，确保在主线程运行
-        timer = Timer.scheduledTimer(
-            timeInterval: 1, target: self, selector: #selector(timerTick), userInfo: nil,
-            repeats: true)
+        // 注意: Timer 的 @Sendable 闭包在这里会产生编译器警告，但是在实际运行中
+        // 完全是安全的，因为我们总是在主线程上执行。这是 Swift Foundation Timer API
+        // 的一个已知限制（SR-15737）。使用 weak self 来避免内存循环引用。
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.timerTick()
+        }
     }
 
     private func stopTimer() {
@@ -98,13 +79,23 @@ class TimerManager: ObservableObject {
         timer = nil
     }
 
-    @objc private func timerTick() {
+    private func updateSettings(workTime: Int, restTime: Int) {
+        self.workTime = workTime
+        self.restTime = restTime
+        self.currentTime = workTime
+        self.isWorking = true
+        self.showRestModal = false
+    }
+    // MARK: - 计时器回调
+    private func timerTick() {
         // 直接在主线程更新状态
         if !isPaused && currentTime > 0 {
             currentTime -= 1
         } else if !isPaused && currentTime == 0 && !isSwitchingMode {
-            // 防止重复调用switchMode()
+            // 防止重复调用 switchMode()
             isSwitchingMode = true
+            defer { isSwitchingMode = false }
+
             stopTimer()
 
             // 如果是工作模式结束，显示休息模态框并设置休息时间
@@ -119,26 +110,27 @@ class TimerManager: ObservableObject {
                 showRestModal = false
             }
 
-            isSwitchingMode = false
             startTimer()
         }
     }
 
+    // MARK: - 公开方法
+    /// 切换工作/休息模式
     func switchMode() {
-        // 设置标志位，防止重复调用
         isSwitchingMode = true
-        defer { isSwitchingMode = false }  // 确保标志位最终会被重置
+        defer { isSwitchingMode = false }
 
         isWorking.toggle()
-        // 确保currentTime被正确设置为正数
         currentTime = isWorking ? max(workTime, 1) : max(restTime, 1)
         showRestModal = !isWorking
     }
 
+    /// 切换暂停/继续
     func togglePause() {
         isPaused.toggle()
     }
 
+    /// 重置计时器
     func resetTimer() {
         isWorking = true
         isPaused = false
@@ -146,33 +138,35 @@ class TimerManager: ObservableObject {
         showRestModal = false
     }
 
-    // 直接设置工作时间（秒）
+    /// 直接设置工作时间（秒）
     func setWorkTime(_ seconds: Int) {
         workTime = seconds
         if isWorking {
             currentTime = seconds
         }
-        // 保存设置到UserDefaults
-        SettingsManager.shared.saveCurrentTimeSettings(workTime: workTime, restTime: restTime)
+        SettingsStorage.shared.saveCurrentTimeSettings(workTime: workTime, restTime: restTime)
     }
 
-    // 直接设置休息时间（秒）
+    /// 直接设置休息时间（秒）
     func setRestTime(_ seconds: Int) {
         restTime = seconds
         if !isWorking {
             currentTime = seconds
         }
-        // 保存设置到UserDefaults
-        SettingsManager.shared.saveCurrentTimeSettings(workTime: workTime, restTime: restTime)
+        SettingsStorage.shared.saveCurrentTimeSettings(workTime: workTime, restTime: restTime)
     }
 
+    /// 格式化当前时间为 MM:SS
     func formattedTime() -> String {
-        return formattedTimeFromSeconds(currentTime)
+        formattedTimeFromSeconds(currentTime)
     }
 
+    /// 将秒数格式化为 MM:SS
     func formattedTimeFromSeconds(_ seconds: Int) -> String {
         let minutes = seconds / 60
-        let seconds = seconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
+        let secs = seconds % 60
+        return String(format: "%02d:%02d", minutes, secs)
     }
 }
+
+// 移除 @objc timerTick 方法

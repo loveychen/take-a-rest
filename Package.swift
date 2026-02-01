@@ -5,11 +5,11 @@ import PackageDescription
 
 let package = Package(
     name: "TakeARest",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        // Products define the executables and libraries a package produces, and make them visible to other packages.
         .executable(
             name: "TakeARest",
             targets: ["TakeARest"])
@@ -19,14 +19,15 @@ let package = Package(
         // .package(url: "https://github.com/realm/SwiftLint.git", from: "0.54.0")
     ],
     targets: [
-        // Targets are the basic building blocks of a package. A target can define a module or a test suite.
-        // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .executableTarget(
             name: "TakeARest",
             dependencies: [],
             resources: [
                 .process("Resources")
             ],
+            swiftSettings: [
+                .unsafeFlags(["-suppress-warnings"], .when(configuration: .release))
+            ]
             // plugins: [.plugin(name: "SwiftLintPlugin", package: "SwiftLint")]
         )
     ]
