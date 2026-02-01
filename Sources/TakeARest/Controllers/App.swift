@@ -1,15 +1,32 @@
+import AppKit
 import CoreData
 import SwiftUI
 
 // MARK: - 应用委托
 /// 处理 macOS 应用级事件，例如 Dock 图标点击
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private var statusBarController: StatusBarController?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 延迟一点时间确保窗口已创建
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             if let window = NSApp.windows.first {
                 window.zoom(nil)
             }
+        }
+
+        // 确保 Dock 图标显示（使用默认策略）
+        NSApp.setActivationPolicy(.regular)
+
+        // 初始化状态栏控制器
+        statusBarController = StatusBarController()
+
+        // 同时尝试设置 Dock 图标为资源的 icns（保留原色）
+        if let dockIconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+            let dockImage = NSImage(contentsOf: dockIconURL)
+        {
+            dockImage.isTemplate = false
+            NSApp.applicationIconImage = dockImage
         }
     }
 

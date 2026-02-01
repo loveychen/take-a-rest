@@ -1,3 +1,4 @@
+import AppKit
 import CoreData
 import Foundation
 
@@ -14,6 +15,10 @@ final class TimerState: ObservableObject {
 
     private var timer: Timer?
     private var isSwitchingMode: Bool = false
+    // 用于记录是否因为系统锁屏自动暂停
+    private var autoPausedByLock: Bool = false
+    // 存放会话相关观察者令牌
+    private var sessionObserverTokens: [Any] = []
 
     init() {
         // 使用默认设置初始化，不启动计时器
@@ -22,6 +27,31 @@ final class TimerState: ObservableObject {
         self.currentTime = self.workTime
 
         // 注意：计时器将在 ContentView.onAppear 中调用 loadUserSettings() 时启动
+        // 监听来自菜单栏的 togggle pause 通知
+        observerToken = NotificationCenter.default.addObserver(
+            forName: Notification.Name("TakeARest.TogglePause"), object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.togglePause()
+        }
+
+        // 广播初始 pause 状态，便于菜单栏同步
+        NotificationCenter.default.post(
+            name: Notification.Name("TakeARest.PauseStateChanged"), object: nil,
+            userInfo: ["isPaused": isPaused])
+
+        // 监听系统会话（锁屏/解锁）事件
+        let resignToken = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.handleSessionResign()
+        }
+        let becomeToken = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.handleSessionBecomeActive()
+        }
+        sessionObserverTokens.append(resignToken)
+        sessionObserverTokens.append(becomeToken)
     }
 
     /// 从 UserDefaults 和 Core Data 加载用户设置
@@ -61,7 +91,16 @@ final class TimerState: ObservableObject {
 
     deinit {
         stopTimer()
+        if let token = observerToken {
+            NotificationCenter.default.removeObserver(token)
+        }
+        for t in sessionObserverTokens {
+            NotificationCenter.default.removeObserver(t)
+        }
     }
+
+    // 用于存放 NotificationCenter 观察者令牌
+    private var observerToken: Any?
 
     // MARK: - 私有方法
     private func startTimer() {
@@ -128,6 +167,33 @@ final class TimerState: ObservableObject {
     /// 切换暂停/继续
     func togglePause() {
         isPaused.toggle()
+        NotificationCenter.default.post(
+            name: Notification.Name("TakeARest.PauseStateChanged"), object: nil,
+            userInfo: ["isPaused": isPaused])
+    }
+
+    // 系统会话：注销/锁屏 事件处理
+    private func handleSessionResign() {
+        // 仅在工作模式下关注锁屏，且只有在当前未暂停时才由系统自动暂停
+        if isWorking && !isPaused {
+            isPaused = true
+            autoPausedByLock = true
+            NotificationCenter.default.post(
+                name: Notification.Name("TakeARest.PauseStateChanged"), object: nil,
+                userInfo: ["isPaused": isPaused])
+        }
+    }
+
+    // 系统会话：恢复/解锁 事件处理
+    private func handleSessionBecomeActive() {
+        // 仅当之前是自动因为锁屏而暂停，才恢复
+        if autoPausedByLock {
+            isPaused = false
+            autoPausedByLock = false
+            NotificationCenter.default.post(
+                name: Notification.Name("TakeARest.PauseStateChanged"), object: nil,
+                userInfo: ["isPaused": isPaused])
+        }
     }
 
     /// 重置计时器
@@ -136,6 +202,9 @@ final class TimerState: ObservableObject {
         isPaused = false
         currentTime = workTime
         showRestModal = false
+        NotificationCenter.default.post(
+            name: Notification.Name("TakeARest.PauseStateChanged"), object: nil,
+            userInfo: ["isPaused": isPaused])
     }
 
     /// 直接设置工作时间（秒）
