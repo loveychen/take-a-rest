@@ -158,14 +158,17 @@ struct RestScreenView: View {
             "tell application \"System Events\" to keystroke \"q\" using {control down, command down}"
         if let appleScript = NSAppleScript(source: script) {
             var error: NSDictionary?
-            let result = appleScript.executeAndReturnError(&error)
+            // 忽略返回值，检查 error 字典中的详细信息以避免隐式类型转换警告
+            _ = appleScript.executeAndReturnError(&error)
             if error == nil {
                 print("✅ AppleScript lock screen triggered successfully")
                 return
+            } else if let errMsg = error?["NSAppleScriptErrorMessage"] as? String {
+                print("⚠️ AppleScript method failed: \(errMsg)")
+            } else if let error = error {
+                print("⚠️ AppleScript method failed: \(error)")
             } else {
-                print(
-                    "⚠️ AppleScript method failed: \(String(describing: error?["NSAppleScriptErrorMessage"] ?? error))"
-                )
+                print("⚠️ AppleScript method failed with unknown error")
             }
         }
 
@@ -204,35 +207,68 @@ final class WindowManager {
 
     private init() {}
 
-    /// 更新窗口为全屏休息模式
+    /// 存储为其它显示器创建的遮罩窗口
+    private var overlayWindows: [NSWindow] = []
+
+    /// 更新窗口为全屏休息模式；在多屏环境下为每个屏幕创建遮罩
     func updateWindowToFullScreen() {
-        guard let window = NSApplication.shared.windows.first else {
+        // 先清理已有的遮罩
+        for w in overlayWindows {
+            w.orderOut(nil)
+        }
+        overlayWindows.removeAll()
+
+        guard let mainWindow = NSApplication.shared.windows.first else {
             print("⚠️ No active window found")
             return
         }
 
         DispatchQueue.main.async {
-            // 确保窗口显示出来
-            window.makeKeyAndOrderFront(nil)
+            // 确定主交互屏幕（优先使用主窗口所在屏幕）
+            let primaryScreen = mainWindow.screen ?? NSScreen.main
+            let screens = NSScreen.screens
 
-            // 获取当前屏幕的尺寸
-            if let screenFrame = NSScreen.main?.frame {
-                window.setFrame(screenFrame, display: true)
+            for screen in screens {
+                if screen == primaryScreen {
+                    // 把主应用窗口移动到主屏并设置为互动的遮罩窗口
+                    mainWindow.makeKeyAndOrderFront(nil)
+                    mainWindow.setFrame(screen.frame, display: true)
+                    mainWindow.level = .screenSaver + 1
+                    mainWindow.collectionBehavior = [
+                        .canJoinAllSpaces, .fullScreenPrimary, .stationary,
+                    ]
+                    mainWindow.isMovable = false
+                    mainWindow.isOpaque = true
+                    mainWindow.backgroundColor = NSColor.black
+                    mainWindow.ignoresMouseEvents = false
+                    mainWindow.styleMask = [.fullSizeContentView]
+                    mainWindow.titleVisibility = .hidden
+                    mainWindow.titlebarAppearsTransparent = true
+                    mainWindow.hasShadow = false
+                } else {
+                    // 为其它屏幕创建不可移动、占位的遮罩窗口以阻断交互
+                    let overlay = NSWindow(
+                        contentRect: screen.frame,
+                        styleMask: [.borderless],
+                        backing: .buffered,
+                        defer: false,
+                        screen: screen
+                    )
+
+                    overlay.level = .screenSaver + 1
+                    overlay.backgroundColor = NSColor.black
+                    overlay.isOpaque = true
+                    // 不忽略鼠标事件，这样遮罩会拦截点击，阻止用户与下面的窗口交互
+                    overlay.ignoresMouseEvents = false
+                    overlay.collectionBehavior = [.canJoinAllSpaces, .stationary]
+                    overlay.hasShadow = false
+
+                    // 让遮罩出现在最前，但不要抢主窗口的 key 状态
+                    overlay.orderFrontRegardless()
+
+                    self.overlayWindows.append(overlay)
+                }
             }
-
-            // 设置窗口为最高优先级
-            window.level = .screenSaver + 1
-            window.collectionBehavior = [
-                .canJoinAllSpaces, .fullScreenPrimary, .stationary,
-            ]
-            window.isMovable = false
-            window.isOpaque = true
-            window.backgroundColor = NSColor.black
-            window.ignoresMouseEvents = false
-            window.styleMask = [.fullSizeContentView]
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            window.hasShadow = false
 
             // 隐藏系统 UI 元素
             NSApp.presentationOptions = [
@@ -253,6 +289,12 @@ final class WindowManager {
     /// 恢复窗口为正常模式
     /// - Parameter isBackgroundMode: 是否应该在后台运行
     func updateWindowToNormal(isBackgroundMode: Bool) {
+        // 移除并关闭所有遮罩窗口
+        for overlay in overlayWindows {
+            overlay.orderOut(nil)
+        }
+        overlayWindows.removeAll()
+
         guard let window = NSApplication.shared.windows.first else {
             print("⚠️ No active window found")
             return

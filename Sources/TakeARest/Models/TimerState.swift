@@ -17,8 +17,7 @@ final class TimerState: ObservableObject {
     private var isSwitchingMode: Bool = false
     // 用于记录是否因为系统锁屏自动暂停
     private var autoPausedByLock: Bool = false
-    // 存放会话相关观察者令牌
-    private var sessionObserverTokens: [Any] = []
+    // 会话观察者改为 selector-based 注册，不再需要保存令牌
 
     init() {
         // 使用默认设置初始化，不启动计时器
@@ -27,31 +26,32 @@ final class TimerState: ObservableObject {
         self.currentTime = self.workTime
 
         // 注意：计时器将在 ContentView.onAppear 中调用 loadUserSettings() 时启动
-        // 监听来自菜单栏的 togggle pause 通知
-        observerToken = NotificationCenter.default.addObserver(
-            forName: Notification.Name("TakeARest.TogglePause"), object: nil, queue: .main
-        ) { [weak self] _ in
-            self?.togglePause()
-        }
+        // 监听来自菜单栏的 toggle pause 通知（使用 selector 来避免捕获 self）
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTogglePauseNotification(_:)),
+            name: Notification.Name("TakeARest.TogglePause"),
+            object: nil
+        )
 
         // 广播初始 pause 状态，便于菜单栏同步
         NotificationCenter.default.post(
             name: Notification.Name("TakeARest.PauseStateChanged"), object: nil,
             userInfo: ["isPaused": isPaused])
 
-        // 监听系统会话（锁屏/解锁）事件
-        let resignToken = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            self?.handleSessionResign()
-        }
-        let becomeToken = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            self?.handleSessionBecomeActive()
-        }
-        sessionObserverTokens.append(resignToken)
-        sessionObserverTokens.append(becomeToken)
+        // 监听系统会话（锁屏/解锁）事件（使用 selector 来避免捕获 self）
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleSessionDidResignNotification(_:)),
+            name: NSWorkspace.sessionDidResignActiveNotification,
+            object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleSessionDidBecomeActiveNotification(_:)),
+            name: NSWorkspace.sessionDidBecomeActiveNotification,
+            object: nil
+        )
     }
 
     /// 从 UserDefaults 和 Core Data 加载用户设置
@@ -91,26 +91,36 @@ final class TimerState: ObservableObject {
 
     deinit {
         stopTimer()
-        if let token = observerToken {
-            NotificationCenter.default.removeObserver(token)
-        }
-        for t in sessionObserverTokens {
-            NotificationCenter.default.removeObserver(t)
-        }
+        NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
-
-    // 用于存放 NotificationCenter 观察者令牌
-    private var observerToken: Any?
 
     // MARK: - 私有方法
     private func startTimer() {
         stopTimer()
-        // 注意: Timer 的 @Sendable 闭包在这里会产生编译器警告，但是在实际运行中
-        // 完全是安全的，因为我们总是在主线程上执行。这是 Swift Foundation Timer API
-        // 的一个已知限制（SR-15737）。使用 weak self 来避免内存循环引用。
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.timerTick()
-        }
+        // 使用 selector-based 的 Timer，避免在 @Sendable 闭包中捕获 self
+        timer = Timer.scheduledTimer(
+            timeInterval: 1, target: self, selector: #selector(handleTimerDidFire(_:)),
+            userInfo: nil, repeats: true)
+    }
+
+    // MARK: - Selector handlers (@objc entry points)
+    // These handlers are intentionally minimal: they bridge Objective-C timers/notifications
+    // into Swift methods without capturing `self` inside @Sendable closures.
+    @objc private func handleTimerDidFire(_ timer: Timer) {
+        timerTick()
+    }
+
+    @objc private func handleTogglePauseNotification(_ notification: Notification) {
+        togglePause()
+    }
+
+    @objc private func handleSessionDidResignNotification(_ notification: Notification) {
+        handleSessionResign()
+    }
+
+    @objc private func handleSessionDidBecomeActiveNotification(_ notification: Notification) {
+        handleSessionBecomeActive()
     }
 
     private func stopTimer() {
