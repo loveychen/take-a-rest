@@ -210,15 +210,25 @@ final class WindowManager {
     /// 存储为其它显示器创建的遮罩窗口
     private var overlayWindows: [NSWindow] = []
 
+    /// 当前被监听的窗口（用于监听屏幕变更）
+    private var observedWindow: NSWindow?
+
     /// 更新窗口为全屏休息模式；在多屏环境下为每个屏幕创建遮罩
     func updateWindowToFullScreen() {
+        // 移除旧的监听以避免重复注册
+        stopObserving()
+
         // 先清理已有的遮罩
         for w in overlayWindows {
             w.orderOut(nil)
         }
         overlayWindows.removeAll()
 
-        guard let mainWindow = NSApplication.shared.windows.first else {
+        // 选择最合适的主窗口（优先使用 keyWindow / mainWindow）
+        guard
+            let mainWindow = NSApp.keyWindow ?? NSApp.mainWindow
+                ?? NSApplication.shared.windows.first
+        else {
             print("⚠️ No active window found")
             return
         }
@@ -245,6 +255,11 @@ final class WindowManager {
                     mainWindow.titleVisibility = .hidden
                     mainWindow.titlebarAppearsTransparent = true
                     mainWindow.hasShadow = false
+
+                    // 调试信息：打印主窗口与屏幕帧以帮助诊断覆盖问题
+                    print(
+                        "🖥️ Primary screen: frame=\(screen.frame), visible=\(screen.visibleFrame), windowFrame=\(mainWindow.frame), scale=\(screen.backingScaleFactor)"
+                    )
                 } else {
                     // 为其它屏幕创建不可移动、占位的遮罩窗口以阻断交互
                     let overlay = NSWindow(
@@ -260,8 +275,24 @@ final class WindowManager {
                     overlay.isOpaque = true
                     // 不忽略鼠标事件，这样遮罩会拦截点击，阻止用户与下面的窗口交互
                     overlay.ignoresMouseEvents = false
-                    overlay.collectionBehavior = [.canJoinAllSpaces, .stationary]
+                    // 确保遮罩也出现在全屏空间中
+                    overlay.collectionBehavior = [
+                        .canJoinAllSpaces, .fullScreenAuxiliary, .stationary,
+                    ]
                     overlay.hasShadow = false
+
+                    // 明确设置 frame（兼容不同缩放/菜单栏）并打印调试信息
+                    overlay.setFrame(screen.frame, display: true)
+                    if overlay.frame.integral != screen.frame.integral {
+                        let adjusted = screen.frame.insetBy(dx: -1, dy: -1)
+                        overlay.setFrame(adjusted, display: true)
+                        print(
+                            "🛠️ Adjusted overlay frame for screen: adjustedFrame=\(overlay.frame) (was \(screen.frame))"
+                        )
+                    }
+                    print(
+                        "🖥️ Overlay created for screen: frame=\(screen.frame), visible=\(screen.visibleFrame), overlayFrame=\(overlay.frame), scale=\(screen.backingScaleFactor)"
+                    )
 
                     // 让遮罩出现在最前，但不要抢主窗口的 key 状态
                     overlay.orderFrontRegardless()
@@ -283,6 +314,9 @@ final class WindowManager {
 
             // 激活应用
             NSApp.activate(ignoringOtherApps: true)
+
+            // 开始监听主窗口与屏幕变更，保证在移动显示器或分辨率变化时自动调整
+            self.startObserving(window: mainWindow)
         }
     }
 
@@ -294,6 +328,9 @@ final class WindowManager {
             overlay.orderOut(nil)
         }
         overlayWindows.removeAll()
+
+        // 停止监听屏幕变更
+        stopObserving()
 
         guard let window = NSApplication.shared.windows.first else {
             print("⚠️ No active window found")
@@ -319,6 +356,51 @@ final class WindowManager {
                 NSApp.activate(ignoringOtherApps: true)
             } else {
                 window.orderOut(nil)
+            }
+        }
+    }
+
+    // MARK: - 屏幕/窗口监听
+    /// 开始监听主窗口的屏幕变更以及系统屏幕参数变更
+    private func startObserving(window: NSWindow) {
+        observedWindow = window
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidChangeScreen(_:)),
+            name: NSWindow.didChangeScreenNotification,
+            object: window)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screensDidChange(_:)),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil)
+    }
+
+    /// 停止监听
+    private func stopObserving() {
+        if let window = observedWindow {
+            NotificationCenter.default.removeObserver(
+                self, name: NSWindow.didChangeScreenNotification, object: window)
+            observedWindow = nil
+        }
+        NotificationCenter.default.removeObserver(
+            self, name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    }
+
+    @objc private func windowDidChangeScreen(_ notification: Notification) {
+        // 当主窗口移动到另一块屏幕时，重新计算全屏/遮罩设置
+        DispatchQueue.main.async {
+            if !self.overlayWindows.isEmpty {
+                self.updateWindowToFullScreen()
+            }
+        }
+    }
+
+    @objc private func screensDidChange(_ notification: Notification) {
+        // 显示器连接/断开或分辨率变化时，重新计算全屏/遮罩设置
+        DispatchQueue.main.async {
+            if !self.overlayWindows.isEmpty {
+                self.updateWindowToFullScreen()
             }
         }
     }
